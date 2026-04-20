@@ -30,13 +30,12 @@
  */
 
 #include <websocketpp/config/asio_client.hpp>
-
 #include <websocketpp/client.hpp>
 
 #include <iostream>
 #include <chrono>
 
-typedef websocketpp::client<websocketpp::config::asio_client> client;
+typedef websocketpp::client<websocketpp::config::asio_tls_client> client;
 
 using websocketpp::lib::placeholders::_1;
 using websocketpp::lib::placeholders::_2;
@@ -44,7 +43,7 @@ using websocketpp::lib::bind;
 
 // pull out the type of messages sent by our config
 typedef websocketpp::config::asio_tls_client::message_type::ptr message_ptr;
-typedef websocketpp::lib::shared_ptr<boost::asio::ssl::context> context_ptr;
+typedef websocketpp::lib::shared_ptr<websocketpp::lib::asio::ssl::context> context_ptr;
 typedef client::connection_ptr connection_ptr;
 
 
@@ -63,7 +62,7 @@ public:
 
         // Register our handlers
         m_endpoint.set_socket_init_handler(bind(&type::on_socket_init,this,::_1));
-        //m_endpoint.set_tls_init_handler(bind(&type::on_tls_init,this,::_1));
+        m_endpoint.set_tls_init_handler(bind(&type::on_tls_init,this,::_1));
         m_endpoint.set_message_handler(bind(&type::on_message,this,::_1,::_2));
         m_endpoint.set_open_handler(bind(&type::on_open,this,::_1));
         m_endpoint.set_close_handler(bind(&type::on_close,this,::_1));
@@ -83,7 +82,7 @@ public:
 
         m_endpoint.connect(con);
 
-        // Start the ASIO io_service run loop
+        // Start the ASIO io_context run loop
         m_start = std::chrono::high_resolution_clock::now();
         m_endpoint.run();
     }
@@ -94,13 +93,13 @@ public:
 
     context_ptr on_tls_init(websocketpp::connection_hdl) {
         m_tls_init = std::chrono::high_resolution_clock::now();
-        context_ptr ctx = websocketpp::lib::make_shared<boost::asio::ssl::context>(boost::asio::ssl::context::tlsv1);
+        context_ptr ctx = websocketpp::lib::make_shared<websocketpp::lib::asio::ssl::context>(websocketpp::lib::asio::ssl::context::tlsv1);
 
         try {
-            ctx->set_options(boost::asio::ssl::context::default_workarounds |
-                             boost::asio::ssl::context::no_sslv2 |
-                             boost::asio::ssl::context::no_sslv3 |
-                             boost::asio::ssl::context::single_dh_use);
+            ctx->set_options(websocketpp::lib::asio::ssl::context::default_workarounds |
+                             websocketpp::lib::asio::ssl::context::no_sslv2 |
+                             websocketpp::lib::asio::ssl::context::no_sslv3 |
+                             websocketpp::lib::asio::ssl::context::single_dh_use);
         } catch (std::exception& e) {
             std::cout << e.what() << std::endl;
         }

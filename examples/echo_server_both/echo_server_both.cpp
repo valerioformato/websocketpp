@@ -12,9 +12,10 @@ typedef websocketpp::server<websocketpp::config::asio_tls> server_tls;
 using websocketpp::lib::placeholders::_1;
 using websocketpp::lib::placeholders::_2;
 using websocketpp::lib::bind;
+using websocketpp::lib::error_code;
 
 // type of the ssl context pointer is long so alias it
-typedef websocketpp::lib::shared_ptr<boost::asio::ssl::context> context_ptr;
+typedef websocketpp::lib::shared_ptr<websocketpp::lib::asio::ssl::context> context_ptr;
 
 // The shared on_message handler takes a template parameter so the function can
 // resolve any endpoint dependent types like message_ptr or connection_ptr
@@ -34,6 +35,12 @@ void on_message(EndpointType* s, websocketpp::connection_hdl hdl,
     }
 }
 
+// Define a callback to handle failures accepting connections
+void on_end_accept(error_code lib_ec, error_code trans_ec) {
+    std::cout << "Accept loop ended "
+                << lib_ec.message() << "/" << trans_ec.message() << std::endl;
+}
+
 // No change to TLS init methods from echo_server_tls
 std::string get_password() {
     return "test";
@@ -41,16 +48,16 @@ std::string get_password() {
 
 context_ptr on_tls_init(websocketpp::connection_hdl hdl) {
     std::cout << "on_tls_init called with hdl: " << hdl.lock().get() << std::endl;
-    context_ptr ctx(new boost::asio::ssl::context(boost::asio::ssl::context::tlsv1));
+    context_ptr ctx(new websocketpp::lib::asio::ssl::context(websocketpp::lib::asio::ssl::context::tlsv1));
 
     try {
-        ctx->set_options(boost::asio::ssl::context::default_workarounds |
-                         boost::asio::ssl::context::no_sslv2 |
-                         boost::asio::ssl::context::no_sslv3 |
-                         boost::asio::ssl::context::single_dh_use);
+        ctx->set_options(websocketpp::lib::asio::ssl::context::default_workarounds |
+                         websocketpp::lib::asio::ssl::context::no_sslv2 |
+                         websocketpp::lib::asio::ssl::context::no_sslv3 |
+                         websocketpp::lib::asio::ssl::context::single_dh_use);
         ctx->set_password_callback(bind(&get_password));
         ctx->use_certificate_chain_file("server.pem");
-        ctx->use_private_key_file("server.pem", boost::asio::ssl::context::pem);
+        ctx->use_private_key_file("server.pem", websocketpp::lib::asio::ssl::context::pem);
     } catch (std::exception& e) {
         std::cout << e.what() << std::endl;
     }
@@ -58,30 +65,30 @@ context_ptr on_tls_init(websocketpp::connection_hdl hdl) {
 }
 
 int main() {
-    // set up an external io_service to run both endpoints on. This is not
+    // set up an external io_context to run both endpoints on. This is not
     // strictly necessary, but simplifies thread management a bit.
-    boost::asio::io_service ios;
+    websocketpp::lib::asio::io_context ctx;
 
     // set up plain endpoint
     server_plain endpoint_plain;
-    // initialize asio with our external io_service rather than an internal one
-    endpoint_plain.init_asio(&ios);
+    // initialize asio with our external io_context rather than an internal one
+    endpoint_plain.init_asio(&ctx);
     endpoint_plain.set_message_handler(
         bind(&on_message<server_plain>,&endpoint_plain,::_1,::_2));
     endpoint_plain.listen(80);
-    endpoint_plain.start_accept();
+    endpoint_plain.start_accept(&on_end_accept);
 
     // set up tls endpoint
     server_tls endpoint_tls;
-    endpoint_tls.init_asio(&ios);
+    endpoint_tls.init_asio(&ctx);
     endpoint_tls.set_message_handler(
         bind(&on_message<server_tls>,&endpoint_tls,::_1,::_2));
     // TLS endpoint has an extra handler for the tls init
     endpoint_tls.set_tls_init_handler(bind(&on_tls_init,::_1));
     // tls endpoint listens on a different port
     endpoint_tls.listen(443);
-    endpoint_tls.start_accept();
+    endpoint_tls.start_accept(&on_end_accept);
 
-    // Start the ASIO io_service run loop running both endpoints
-    ios.run();
+    // Start the ASIO io_context run loop running both endpoints
+    ctx.run();
 }
